@@ -22,6 +22,9 @@ class Node:
             return 0
         return self.parent.g() + 1
 
+    def copy(self):
+        return Node(state=self.state.copy())
+
     def __eq__(self, rhs):
         return (self.state == rhs.state)
 
@@ -136,7 +139,6 @@ class EightPuzzleNode(Node):
         loc = tuple(np.array(space) + np.array(dir))
         return self.move(loc)
         
-
     @staticmethod
     def is_inside(loc):
         return 0 <= loc[0] <= 2 and 0 <= loc[1] <= 2
@@ -157,45 +159,88 @@ sol = BestFirst(S0, G, Ops)
 
 
 # ## path searching
-# # problem setteing
-# Ops = [lambda N: Node((N[0]  , N[1]+1)),
-#        lambda N: Node((N[0]+1, N[1]+1)),
-#        lambda N: Node((N[0]+1, N[1]  )),
-#        lambda N: Node((N[0]+1, N[1]-1)),
-#        lambda N: Node((N[0]  , N[1]-1)),
-#        lambda N: Node((N[0]-1, N[1]-1)),
-#        lambda N: Node((N[0]-1, N[1]  )),
-#        lambda N: Node((N[0]-1, N[1]+1))]
-# obstacle = [(5, j) for j in range(2, 6)]
-# OK = lambda N: (1<=N[0]<=7) and (1<=N[1]<=5) and (N not in obstacle)
-# S0 = Node((2, 3))
-# G = Node((7, 3), goal=True)
-# EvalFunc = lambda N: (N[0] - G[0])**2 + (N[1] - G[1])**2 + N.g()
-# # solve the problem
-# br = BreadthFirst(S0, G, Ops, OK=OK)
-# dpt = DepthFirst(S0, G, Ops, OK=OK)
-# bst = BestFirst(S0, G, Ops, OK=OK)
+class RobotLocationNode(Node):
+    __delta = [np.array([0,1]), np.array([1,1]), np.array([1,0]), np.array([1,-1]),
+               np.array([0,-1]), np.array([-1,-1]), np.array([-1,0]), np.array([-1,1])]
+    __xlim = [1, 7]
+    __ylim = [1, 5]
+    __obstacle = [(5, j) for j in range(2, 6)]
 
-# # visualization
-# def visualize(res, ax1, ax2, *args, **kwargs):
-#     ax1.grid(c="k")
-#     ax1.set(aspect="equal", xlim=(0, 7), ylim=(0, 5))
-#     ax1.xaxis.set_major_locator(ticker.MultipleLocator(1))
-#     ax1.yaxis.set_major_locator(ticker.MultipleLocator(1))
-#     ax2.grid(c="k")
-#     ax2.set(aspect="equal", xlim=(0, 7), ylim=(0, 5))
-#     ax2.xaxis.set_major_locator(ticker.MultipleLocator(1))
-#     ax2.yaxis.set_major_locator(ticker.MultipleLocator(1))
-#     path = np.array(res[0]) - 0.5
-#     visit = np.array(res[1]) - 0.5
-#     ax1.plot(path.T[0], path.T[1], *args, **kwargs)
-#     ax2.plot(visit.T[0], visit.T[1], *args, **kwargs)
+    def __init__(self, state, *args, **kwargs):
+        state = np.array(state)
+        if not self.is_safe(state):
+            raise Exception("outside the region")
+        super().__init__(state, *args, **kwargs)
+               
+    def __repr__(self):
+        return str(self.state)
 
-# plt.close("all")
-# fig, axes = plt.subplots(1, 2)
+    def __eq__(self, rhs):
+        return (self.state == rhs.state).all()
 
-# for res, method in zip([br, dpt, bst], ["BreathFirst", "DepthFirst", "BestFirst"]):
-#     print(f"{method}: took {len(res[1])} steps to find the path (length:{len(res[0])})")
-#     visualize(res, axes[0], axes[1], label=method)
 
-# fig.legend()
+    def move(self, dir):
+        """
+        dir:
+        8 1 2
+        7   3
+        6 5 4
+        """
+        if not self.movable(dir):
+            raise Exception("unmovable")
+        tmp = RobotLocationNode(state=self.state.copy())
+        tmp.state += RobotLocationNode.__delta[dir-1]
+        return tmp
+
+    def movable(self, dir):
+        tmp = self.state + RobotLocationNode.__delta[dir-1]
+        return self.is_safe(tmp)
+        
+    @staticmethod
+    def is_safe(loc):
+        cls = RobotLocationNode
+        xmin, xmax = cls.__xlim
+        ymin, ymax = cls.__ylim
+        return xmin <= loc[0] <= xmax and ymin <= loc[1] <= ymax and tuple(loc) not in cls.__obstacle
+
+    
+# problem setteing
+Ops = [lambda N: N.move(1),
+       lambda N: N.move(2),
+       lambda N: N.move(3),
+       lambda N: N.move(4),
+       lambda N: N.move(5),
+       lambda N: N.move(6),
+       lambda N: N.move(7),
+       lambda N: N.move(8)]
+S0 = RobotLocationNode((2, 3))
+G = RobotLocationNode((7, 3))
+EvalFunc = lambda N: np.linalg.norm(N.state - G.state) + N.g()
+# solve the problem
+br = BreadthFirst(S0, G, Ops)
+dpt = DepthFirst(S0, G, Ops)
+bst = BestFirst(S0, G, Ops)
+
+# visualization
+def visualize(res, ax1, ax2, *args, **kwargs):
+    ax1.grid(c="k")
+    ax1.set(aspect="equal", xlim=(0, 7), ylim=(0, 5))
+    ax1.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax1.yaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax2.grid(c="k")
+    ax2.set(aspect="equal", xlim=(0, 7), ylim=(0, 5))
+    ax2.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax2.yaxis.set_major_locator(ticker.MultipleLocator(1))
+    path = np.array([v.state - 0.5 for v in res[0]])
+    visit = np.array([v.state - 0.5 for v in res[1]])
+    ax1.plot(path.T[0], path.T[1], *args, **kwargs)
+    ax2.plot(visit.T[0], visit.T[1], *args, **kwargs)
+
+plt.close("all")
+fig, axes = plt.subplots(1, 2)
+
+for res, method in zip([br, dpt, bst], ["BreathFirst", "DepthFirst", "BestFirst"]):
+    print(f"{method}: took {len(res[1])} steps to find the path (length:{len(res[0])})")
+    visualize(res, axes[0], axes[1], label=method)
+
+fig.legend()
